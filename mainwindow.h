@@ -7,6 +7,7 @@
 #include <QtCharts/QChartView>
 #include <QtCharts/QLineSeries>
 #include <QSerialPortInfo>
+#include <QList>
 
 QT_CHARTS_USE_NAMESPACE
 
@@ -32,15 +33,18 @@ private slots:
 
     void on_comboBoxADCRes_currentIndexChanged(const QString &arg1);
 
+    void on_comboBoxChannel_currentIndexChanged(const QString &arg1);
+
 private:
     void saveToCSV();
     void initUI();
+    void updateAxis();
 
 private:
     Ui::MainWindow *ui;
-    QThread *worker;
+    QThread *thread;
     SerialManager *manager;
-    QLineSeries *series;
+    QList<QLineSeries *> series;
     QChart *chart;
     static int x;
     int mod = 500;

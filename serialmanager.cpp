@@ -12,8 +12,10 @@ SerialManager::SerialManager(QObject *parent) : QObject(parent), standardOutput(
 
 SerialManager::~SerialManager()
 {
-    qDebug() << "Closing port" << portName;
-    serialPort->close();
+    qDebug() << "~SerialManager()" << portName;
+
+    closeSafely();
+
     delete  serialPort;
 }
 
@@ -35,6 +37,13 @@ int SerialManager::getBaudrate() const
 void SerialManager::setBaudrate(int value)
 {
     baudrate = value;
+}
+
+void SerialManager::closeSafely()
+{
+    if(serialPort->isOpen())
+        serialPort->close();
+    emit finished();
 }
 
 void SerialManager::open(const int &state)
@@ -61,16 +70,16 @@ void SerialManager::open(const int &state)
 
 void SerialManager::handleReadyRead()
 {
-    QByteArray data = serialPort->readAll();
+    //QByteArray data = serialPort->readAll();
     //std::cout << data.toStdString() << std::endl;
-    emit resultReady(QString::fromStdString(data.toStdString()));
+    emit resultReady(serialPort->readAll());
 }
 
 void SerialManager::handleError(QSerialPort::SerialPortError serialPortError)
 {
     if (serialPortError == QSerialPort::ReadError) {
         standardOutput << QObject::tr("An I/O error occurred while reading the data from port %1, error: %2")
-                            .arg(serialPort->portName()).arg(serialPort->errorString()) << endl;
+                          .arg(serialPort->portName()).arg(serialPort->errorString()) << endl;
         QCoreApplication::exit(1);
     }
 }

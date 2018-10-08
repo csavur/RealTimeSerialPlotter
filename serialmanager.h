@@ -18,7 +18,10 @@ public:
 
     int getBaudrate() const;
     void setBaudrate(int value);
+    void closeSafely();
+
 signals:
+    void finished();
     void resultReady(const QString &result);
 
 public slots:

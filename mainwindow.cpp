@@ -3,6 +3,7 @@
 #include <QMessageBox>
 #include <QtDebug>
 #include <QFileDialog>
+#include <QJsonDocument>
 
 int MainWindow::x = 0;
 
@@ -12,18 +13,16 @@ MainWindow::MainWindow(QWidget *parent) :
 {
     ui->setupUi(this);
 
-    setAttribute(Qt::WA_DeleteOnClose);
-
     //! [1] Creating thread
-    worker = new QThread;
-    manager = new SerialManager;
-    manager->moveToThread(worker);
+    thread = new QThread();
+    manager = new SerialManager();
+    manager->moveToThread(thread);
 
-    connect(worker, &QThread::finished, manager, &SerialManager::deleteLater);
-    //connect(worker, &QThread::started, manager, &SerialManager::open);
+    connect(thread, &QThread::finished, manager, &SerialManager::deleteLater);
     connect(this, &MainWindow::updateSerialPort, manager, &SerialManager::open);
+    connect(manager, &SerialManager::finished, thread, &QThread::quit);
     connect(manager, &SerialManager::resultReady, this, &MainWindow::handleResults);
-    worker->start();
+    thread->start();
     //! [/2]
 
     initUI();
@@ -31,8 +30,14 @@ MainWindow::MainWindow(QWidget *parent) :
 
 MainWindow::~MainWindow()
 {
-    worker->exit();
-    delete manager;
+    delete chart;
+    foreach (QLineSeries *p, series) {
+        delete  p;
+    }
+    thread->quit();
+    manager->deleteLater();
+
+    qDebug() << "~MainWindow()";
     delete ui;
 }
 
@@ -45,15 +50,21 @@ void MainWindow::initUI()
     ui->comboBoxBaudRate->setCurrentText("115200");
 
     ui->comboBoxADCRes->blockSignals(true);
-    ui->comboBoxADCRes->addItems(QStringList() << "1023" << "2047" << "4095" << "8191" );
+    ui->comboBoxADCRes->addItems(QStringList() << "20" << "1023" << "2047" << "4095" << "8191" );
     ui->comboBoxADCRes->setCurrentText("2047");
     ui->comboBoxADCRes->blockSignals(false);
 
-    series = new QLineSeries();
+    ui->comboBoxChannel->blockSignals(true);
+    ui->comboBoxChannel->addItems(QStringList() << "1" << "2" << "3" << "4" << "5" << "6" );
+    ui->comboBoxChannel->setCurrentText("1");
+    ui->comboBoxChannel->blockSignals(false);
+
+    QLineSeries *ser = new QLineSeries();
+    series.append(ser);
 
     chart = new QChart();
+    chart->addSeries(ser);
     chart->legend()->hide();
-    chart->addSeries(series);
     chart->createDefaultAxes();
     chart->setTitle("Real Time Serial Plotter");
 
@@ -65,10 +76,15 @@ void MainWindow::initUI()
 
     ui->gridLayout->addWidget(chartView, 2, 0, 2, 10);
 
-    chart->axisX()->setRange(0, 100);
-    chart->axisY()->setRange(0, 2047);
+    updateAxis();
 
-    series->setColor(QColor(255, 128, 0));
+    series[0]->setColor(QColor(255, 128, 0));
+}
+
+void MainWindow::updateAxis()
+{
+    chart->axisX()->setRange(0, 100);
+    chart->axisY()->setRange(0, ui->comboBoxADCRes->currentText().toInt());
 }
 
 void MainWindow::on_pushButtonStart_clicked()
@@ -101,10 +117,13 @@ void MainWindow::on_pushButtonStart_clicked()
 
         emit updateSerialPort(1);
 
-        series->clear();
         mod = 500;
         x = 0;
         chart->axisX()->setRange(0, 500);
+
+        foreach (QLineSeries *p, series) {
+            p->clear();
+        }
 
     } else {
 
@@ -113,15 +132,26 @@ void MainWindow::on_pushButtonStart_clicked()
 
         saveToCSV();
     }
-
 }
-
 
 void MainWindow::handleResults(const QString &result)
 {
     x++;
-    qDebug() << "x : " << x << " mod :" << x%100 << " div :" << int(x/100.0);
-    series->append(x, result.toInt());
+    qDebug() << result;
+    QJsonDocument doc = QJsonDocument::fromJson(result.toUtf8());
+    QJsonObject root = doc.object();
+    QJsonValue value = root.value(QString("num_ch"));
+    QJsonValue timestamp = root.value(QString("timestamp"));
+    qDebug() << timestamp.toString();
+    QJsonValue data = root.value(QString("data"));
+    QJsonArray array = data.toArray();
+
+    qDebug() << "Array Size :" << array.size() << ":" << array[0].toInt() << ", " << array[1].toInt();
+
+    for (int i = 0; i < value.toInt(); ++i) {
+        //qDebug() << "Celal " <<  x << " : " <<array[i].toInt();
+        series[i]->append(x, array[i].toInt());
+    }
 
     if(x%mod == 0) {
         chart->axisX()->setRange(x-500, x);
@@ -134,21 +164,46 @@ void MainWindow::saveToCSV()
     if(!ui->checkBoxSave->isChecked())
         return;
 
-    QString filename = QFileDialog::getSaveFileName(this, "DialogTitle", "filename.csv", "CSV files (.csv);;Zip files (.zip, *.7z)", 0, 0); // getting the filename (full path)
-    QFile data(filename);
-    if(data.open(QFile::WriteOnly |QFile::Truncate))
-    {
-        QTextStream output(&data);
-        for (int i = 0; i < series->count(); ++i) {
-            output << series->at(i).x() << "," << series->at(i).y() << "\n";
+        QString filename = QFileDialog::getSaveFileName(this, "DialogTitle", "filename.csv", "CSV files (.csv);;Zip files (.zip, *.7z)", nullptr, nullptr); // getting the filename (full path)
+        QFile data(filename);
+        if(data.open(QFile::WriteOnly |QFile::Truncate))
+        {
+            QTextStream output(&data);
+            for (int i = 0; i < series[0]->count(); ++i) { // num reading
+                output << series[0]->at(i).x() << ",";
+                for (int j = 0; j < series.count(); ++j) { // num channel
+                    output << series[j]->at(i).y() << ", ";
+                }
+                output << "\n";
+            }
         }
 
-    }
-
-    data.close();
+        data.close();
 }
 
 void MainWindow::on_comboBoxADCRes_currentIndexChanged(const QString &arg1)
 {
     chart->axisY()->setRange(0, arg1.toInt());
+}
+
+
+void MainWindow::on_comboBoxChannel_currentIndexChanged(const QString &arg1)
+{
+    Q_UNUSED(arg1);
+    foreach (QLineSeries *p, series) {
+        chart->removeSeries(p);
+        delete  p;
+    }
+    series.clear();
+
+    int num_ch = arg1.toInt();
+    for (int i = 0; i < num_ch; ++i) {
+        QLineSeries *ser = new QLineSeries();
+        chart->addSeries(ser);
+        series.append(ser);
+    }
+
+    chart->createDefaultAxes();
+
+    updateAxis();
 }
