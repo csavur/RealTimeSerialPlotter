@@ -70,9 +70,11 @@ void SerialManager::open(const int &state)
 
 void SerialManager::handleReadyRead()
 {
-    //QByteArray data = serialPort->readAll();
-    //std::cout << data.toStdString() << std::endl;
-    emit resultReady(serialPort->readAll());
+    while (serialPort->canReadLine()) {
+        QByteArray data = serialPort->readLine();
+//        qDebug() << data;
+        emit resultReady(data);
+    }
 }
 
 void SerialManager::handleError(QSerialPort::SerialPortError serialPortError)

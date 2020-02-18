@@ -137,26 +137,60 @@ void MainWindow::on_pushButtonStart_clicked()
 void MainWindow::handleResults(const QString &result)
 {
     x++;
-    qDebug() << result;
-    QJsonDocument doc = QJsonDocument::fromJson(result.toUtf8());
-    QJsonObject root = doc.object();
-    QJsonValue value = root.value(QString("num_ch"));
-    QJsonValue timestamp = root.value(QString("timestamp"));
-    qDebug() << timestamp.toString();
-    QJsonValue data = root.value(QString("data"));
-    QJsonArray array = data.toArray();
 
-    qDebug() << "Array Size :" << array.size() << ":" << array[0].toInt() << ", " << array[1].toInt();
 
-    for (int i = 0; i < value.toInt(); ++i) {
-        //qDebug() << "Celal " <<  x << " : " <<array[i].toInt();
-        series[i]->append(x, array[i].toInt());
+
+    QStringList fields = result.split(",");
+
+    if (fields.count() < 5) {
+        return;
+    }
+
+    int num_ch = fields[0].toInt();
+    QString type = fields[1];
+
+
+    qint64 ts = QDateTime::currentSecsSinceEpoch();
+
+    if (type ==  "ppg") {
+        //    qDebug() << num_ch << type <<fields[2] << fields[3] << fields[4];
+        series[0]->append(x, fields[2].toInt());
+        series[1]->append(x, fields[3].toInt());
+        series[2]->append(x, fields[4].toInt());
     }
 
     if(x%mod == 0) {
         chart->axisX()->setRange(x-500, x);
         mod = 1;
+
+        for (int i = 0; i < 3; ++i) {
+            series[i]->removePoints(0, 400);
+        }
     }
+
+
+
+// old code
+//    qDebug() << result;
+//    QJsonDocument doc = QJsonDocument::fromJson(result.toUtf8());
+//    QJsonObject root = doc.object();
+//    QJsonValue value = root.value(QString("num_ch"));
+//    QJsonValue timestamp = root.value(QString("timestamp"));
+//    qDebug() << timestamp.toString();
+//    QJsonValue data = root.value(QString("data"));
+//    QJsonArray array = data.toArray();
+
+//    qDebug() << "Array Size :" << array.size() << ":" << array[0].toInt() << ", " << array[1].toInt();
+
+//    for (int i = 0; i < value.toInt(); ++i) {
+//        //qDebug() << "Celal " <<  x << " : " <<array[i].toInt();
+//        series[i]->append(x, array[i].toInt());
+//    }
+
+//    if(x%mod == 0) {
+//        chart->axisX()->setRange(x-500, x);
+//        mod = 1;
+//    }
 }
 
 void MainWindow::saveToCSV()
